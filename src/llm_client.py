@@ -98,8 +98,5 @@ class LLMQueryClient:
                 max_tokens=max_tokens,
             )
 
-        try:
-            return json.loads(content)
-        except Exception:
-            return content
+        return json.loads(content)
 
