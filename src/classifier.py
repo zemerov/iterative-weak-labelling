@@ -60,7 +60,7 @@ class DialogueCriteriaClassifier:
         json_schema = self._build_json_schema()
         
         try:
-            result = self.llm_client.query(
+            result = self.llm_client.generate(
                 messages,
                 model=self.model,
                 temperature=self.temperature,
