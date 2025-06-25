@@ -32,11 +32,17 @@ class LLMQueryClient:
         schema: dict | None,
         max_tokens: int = 2048,
     ) -> str:
-        response_format = (
-            {"type": "json_schema", "schema": schema, "strict": True}
-            if schema
-            else {"type": "json_object"}
-        )
+        if schema:
+            response_format = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "response",
+                    "schema": schema,
+                    "strict": False,
+                },
+            }
+        else:
+            response_format = {"type": "json_object"}
         completion = self.vllm_client.chat.completions.create(
             model=model,
             messages=messages,
@@ -58,11 +64,17 @@ class LLMQueryClient:
         if self.openai_client is None:
             raise RuntimeError("OPENAI_API_KEY is not configured")
 
-        response_format = (
-            {"type": "json_schema", "schema": schema, "strict": True}
-            if schema
-            else {"type": "json_object"}
-        )
+        if schema:
+            response_format = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "response",
+                    "schema": schema,
+                    "strict": True,
+                },
+            }
+        else:
+            response_format = {"type": "json_object"}
         completion = self.openai_client.chat.completions.create(
             model=model,
             messages=messages,

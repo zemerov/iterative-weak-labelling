@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from jinja2 import Template
+from loguru import logger
 
 from .llm_client import LLMQueryClient
 
@@ -15,11 +16,55 @@ class CriteriaGenerator:
 
         self.llm_client = LLMQueryClient()
         self.model = model
+        logger.debug("CriteriaGenerator initialised with model {}", model)
 
-    def _llm_json(self, prompt: str) -> dict | list:
+    def _deduplication_schema(self) -> dict:
+        return {
+            "type": "object",
+            "properties": {
+                "unique_criteria": {
+                "type": "array",
+                "items": {
+                    "type": "string"
+                }
+                }
+            },
+            "required": ["unique_criteria"],
+            "additionalProperties": False
+            }
+
+    def _generation_schema(self) -> dict:
+        """JSON schema for the criteria generation response."""
+        return {
+            "type": "object",
+            "properties": {
+                "criteria": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "criterion": {"type": "string"},
+                            "description": {"type": "string"},
+                            "class": {"type": "string"},
+                        },
+                        "required": ["criterion", "description", "class"],
+                        "additionalProperties": False,
+                    },
+                },
+            },
+            "required": ["criteria"],
+            "additionalProperties": False,
+        }
+
+    def _llm_json(self, prompt: str, schema: dict | None = None) -> dict | list:
         messages = [{"role": "system", "content": prompt}]
-        result = self.llm_client.generate(messages, model=self.model, temperature=0)
-        
+        logger.debug("Sending prompt to LLM:\n{}", prompt)
+        result = self.llm_client.generate(
+            messages,
+            model=self.model,
+            temperature=0.7,
+            schema=schema,
+        )
         return json.loads(result) if isinstance(result, str) else result
 
     def get_new_criteria(
@@ -42,20 +87,26 @@ class CriteriaGenerator:
             existing_criteria=existing,
             texts_with_labels=examples,
         )
-        return self._llm_json(prompt)
+        schema = self._generation_schema()
+        result = self._llm_json(prompt, schema=schema)
+        return result["criteria"]
 
     def deduplicate_new_criteria(
         self,
-        existing: dict[str, str],
-        new: dict[str, str],
-    ) -> dict[str, str]:
+        existing: list[dict[str, str]],
+        new: list[dict[str, str]],
+    ) -> list[dict[str, str]]:
+        all_criteria = existing + new
+
         prompt = self.deduplicate_criteria_template.render(
-            criteria=json.dumps(new, ensure_ascii=False, indent=2)
+            criteria=json.dumps(all_criteria, ensure_ascii=False, indent=2)
         )
-        deduped_new = self._llm_json(prompt)
-        union = {**existing, **deduped_new}
-        prompt = self.deduplicate_criteria_template.render(
-            criteria=json.dumps(union, ensure_ascii=False, indent=2)
-        )
-        deduped_union = self._llm_json(prompt)
-        return {k: v for k, v in deduped_union.items() if k not in existing}
+        
+        schema = self._deduplication_schema()
+        deduped_criteria_names = self._llm_json(prompt, schema=schema)
+        print(deduped_criteria_names)
+        deduped_criteria_names = deduped_criteria_names['unique_criteria']
+        
+        return [
+            x for x in all_criteria if x['criterion'] in deduped_criteria_names
+        ]

@@ -1,43 +1,57 @@
-# Context
+{# Context #}
 
-I am solving text classification task for {dataset_name} dataset via Weak Supervision. 
-I have a labelling functions formulated in a form of binary criterion (value — True/False). 
-The value for a given text and criterion is collected via few-shot-prompting LLM.
-Each criteria corresponds to specific class.
-Each criterion is then converted in labelling function which predict the class_name if True else ABSTAIN. 
+I am solving a text classification task for the **{{ dataset_name }}** dataset using Weak Supervision.  
+I have formulated labeling functions based on binary criteria (value — True/False).  
+The value for a given text and criterion is obtained via few-shot prompting of a language model (LLM).  
+Each criterion corresponds to a specific class.  
+Each criterion is then converted into a labeling function that predicts the class name if True, or ABSTAIN otherwise.  
 
-# Task
+{# Task #}
 
-Extract new criteria to determine the correct class of a text. 
-You are given the list of existing criteria for classification and classification error for existing model. 
-
+Your task is to extract new criteria that help determine the correct class of a text.  
+You are provided with a list of existing criteria and classification errors from the current model.  
 
 {% if existing_criteria %}
-# Existing criteria
+### Existing Criteria
 
 {{ existing_criteria }}
-
 {% endif %}
 
+### List of texts and their correct labels
 
-# List of texts where and the correct labels
+{{ texts_with_labels }}
 
-{texts_with_labels}
+### Response Format
 
+List all new criteria in the response. For each, include:
 
-# Response format
+- `criterion`: a short name for the criterion  
+- `description`: a detailed explanation that can guide an LLM to identify matching texts  
+- `class`: the class to which the criterion applies  
 
-List all new criteria in the response. For each, include the name, a description of the criterion, and the class to which it belongs.
-The description should be clear for LLM and consist of several sentences and explain the dialogues that match this criterion.
+The description should consist of several sentences and explain the types of dialogues that match this criterion.
 
-Respond in JSON format with the following structure:
+Respond in **JSON** format using the following json schema:
 
 ```json
 {
-    "criteria": [
-        {"criterion": str, "description": str, "class": str},
-        {"criterion": str, "description": str, "class": str},
-        ...
-    ]
+    "type": "object",
+    "properties": {
+        "criteria": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "criterion": {"type": "string"},
+                    "description": {"type": "string"},
+                    "class": {"type": "string"},
+                },
+                "required": ["criterion", "description", "class"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["criteria"],
+    "additionalProperties": False,
 }
 ```

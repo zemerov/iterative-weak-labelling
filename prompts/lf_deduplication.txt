@@ -2,7 +2,7 @@
 
 You will be given a dictionary of criteria and their descriptions.
 Remove duplicates — criteria that describe the same thing.
-In your response, I want to receive a dictionary that includes only unique (non-overlapping) criteria from the original dictionary.
+In your response, I want to receive a list of criterion that includes only unique (non-overlapping) criteria from the original dictionary.
 If all criteria in the original dictionary are different, simply copy it into the response.
 
 # Dictionary of criteria
@@ -11,12 +11,20 @@ If all criteria in the original dictionary are different, simply copy it into th
 
 # Response format
 
-Reply in JSON format with the following structure:
+Reply in JSON format with the following json schema:
 
 ```json
 {
-    "criterion_name_1": str,
-    "criterion_name_2": str,
-    ...
+  "type": "object",
+  "properties": {
+    "unique_criteria": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": ["unique_criteria"],
+  "additionalProperties": false
 }
 ```
