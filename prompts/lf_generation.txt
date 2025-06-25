@@ -11,9 +11,13 @@ Each criterion is then converted in labelling function which predict the class_n
 Extract new criteria to determine the correct class of a text. 
 You are given the list of existing criteria for classification and classification error for existing model. 
 
+
+{% if existing_criteria %}
 # Existing criteria
 
-{existing_criteria}
+{{ existing_criteria }}
+
+{% endif %}
 
 
 # List of texts where and the correct labels

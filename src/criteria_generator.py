@@ -29,7 +29,11 @@ class CriteriaGenerator:
         labels: list[str],
         existing_criteria: dict[str, str] | None = None,
     ) -> list[dict[str, str]]:
-        existing = json.dumps(existing_criteria or {}, ensure_ascii=False, indent=2)
+        existing = (
+            json.dumps(existing_criteria, ensure_ascii=False, indent=2)
+            if existing_criteria
+            else None
+        )
         examples = json.dumps([
             {"text": t, "label": l} for t, l in zip(texts, labels)
         ], ensure_ascii=False, indent=2)
