@@ -3,29 +3,9 @@ from __future__ import annotations
 import json
 from jinja2 import Template
 
-        self.generation_schema = {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "criterion": {"type": "string"},
-                    "description": {"type": "string"},
-                    "class": {"type": "string"},
-                },
-                "required": ["criterion", "description", "class"],
-                "additionalProperties": False,
-            },
-        }
+from .llm_client import LLMQueryClient
 
-    def _llm_json(self, prompt: str, schema: dict | None = None) -> dict | list:
-        result = self.llm_client.generate(
-            messages,
-            model=self.model,
-            temperature=0,
-            schema=schema,
-        )
-        return result if isinstance(result, (dict, list)) else json.loads(result)
-        return self._llm_json(prompt, self.generation_schema)
+class CriteriaGenerator:
     def __init__(self, generate_criteria_file: str, deduplicate_criteria_file: str, model: str = "gpt-4.1-2025-04-14") -> None:
         with open(generate_criteria_file, "r", encoding="utf-8") as file:
             self.generate_criteria_template = Template(file.read())
@@ -39,7 +19,8 @@ from jinja2 import Template
     def _llm_json(self, prompt: str) -> dict | list:
         messages = [{"role": "system", "content": prompt}]
         result = self.llm_client.generate(messages, model=self.model, temperature=0)
-        return json.loads(result)
+        
+        return json.loads(result) if isinstance(result, str) else result
 
     def get_new_criteria(
         self,
