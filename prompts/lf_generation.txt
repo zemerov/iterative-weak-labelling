@@ -1,0 +1,37 @@
+# Context
+
+I am solving text classification task for {dataset_name} dataset via Weak Supervision. 
+I have a labelling functions formulated in a form of binary criterion (value — True/False). 
+The value for a given text and criterion is collected via few-shot-prompting LLM.
+Each criteria corresponds to specific class.
+Each criterion is then converted in labelling function which predict the class_name if True else ABSTAIN. 
+
+# Task
+
+Extract new criteria to determine the correct class of a text. 
+You are given the list of existing criteria for classification and classification error for existing model. 
+
+# Existing criteria
+
+{existing_criteria}
+
+
+# List of texts where and the correct labels
+
+{texts_with_labels}
+
+
+# Response format
+
+List all new criteria in the response. For each, include the name, a description of the criterion, and the class to which it belongs.
+The description should be clear for LLM and consist of several sentences and explain the dialogues that match this criterion.
+
+Respond in JSON format with the following structure:
+
+```json
+[
+    {"criterion": str, "description": str, "class": str},
+    {"criterion": str, "description": str, "class": str},
+    ...
+]
+```

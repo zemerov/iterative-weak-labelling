@@ -1,0 +1,22 @@
+# Task
+
+You will be given a dictionary of criteria and their descriptions.
+Remove duplicates — criteria that describe the same thing.
+In your response, I want to receive a dictionary that includes only unique (non-overlapping) criteria from the original dictionary.
+If all criteria in the original dictionary are different, simply copy it into the response.
+
+# Dictionary of criteria
+
+{{ criteria }}
+
+# Response format
+
+Reply in JSON format with the following structure:
+
+```json
+{
+    "criterion_name_1": str,
+    "criterion_name_2": str,
+    ...
+}
+```

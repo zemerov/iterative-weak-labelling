@@ -1,0 +1,26 @@
+# Role
+You are a expert who clissifies text for diffirenet critaria.
+
+## Task
+Analyze the provided dialogue, define true/false for presence of each criterion. 
+For the dialogue assign zero, one or more criteria. It is possible that the dialogue has no criteria, it means all fields should be false.
+
+## List of criteria for analysis{% for key, value in existing_small_tags.items() %}
+- NAME: **{{ key }}**
+DESCRIPTION: {{ value }}
+{% endfor %}
+
+
+## Response format rules:
+Provide the result in JSON format (write only json without extra quoutes and text):
+{
+    "thoughts": str,
+{% for key in existing_small_tags.keys() %}    "{{ key }}": true/false{% if not loop.last %},{% endif %}
+{% endfor %}}
+
+
+Response in Russian only. 
+Firstly, write your thoughts on why some criteria present and some don't in "thoughts" field in resulting dict.
+And then for each criterion write the boolean verdict:
+* True — criteria present
+* False — criteria absent
