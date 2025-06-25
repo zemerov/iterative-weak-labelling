@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from jinja2 import Template
 
-from llm_client import LLMQueryClient
+from src.llm_client import LLMQueryClient
 
 
 class CriteriaGenerator:

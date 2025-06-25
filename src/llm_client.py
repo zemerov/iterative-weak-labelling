@@ -5,7 +5,7 @@ import openai
 
 class LLMQueryClient:
     VLLM_BASE_URL = "http://localhost:8000/v1"
-    VLLM_KEY = 'default-token'
+    VLLM_TOKEN = 'default-token'
 
     def __init__(self, max_retry: int = 5):
         openai_api_key = os.getenv("OPENAI_API_KEY", "")
@@ -16,8 +16,8 @@ class LLMQueryClient:
             self.openai_client = openai.Client(api_key=openai_api_key)
 
         self.vllm_client = openai.Client(
-            base_url=os.gentenv("VLLM_BASE_URL", self.VLLM_BASE_URL), 
-            api_key=os.getenv("VLLM_TOKEN", self.LOCAL_KEY)
+            base_url=os.getenv("VLLM_BASE_URL", self.VLLM_BASE_URL), 
+            api_key=os.getenv("VLLM_TOKEN", self.VLLM_TOKEN)
         )
 
     def _get_vllm_answer(
@@ -52,6 +52,6 @@ class LLMQueryClient:
         temperature: float = None
     ) -> str:
         if "gpt" in model:
-            return self._get_api_answer(messages, model, temperature, extra_body=extra_body, max_tokens=max_tokens)
+            return self._get_openai_answer(messages, model, temperature, extra_body=extra_body, max_tokens=max_tokens)
         else:
             return self._get_vllm_answer(messages, model, temperature, extra_body=extra_body, max_tokens=max_tokens)

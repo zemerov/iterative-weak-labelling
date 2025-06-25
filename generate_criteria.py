@@ -5,8 +5,8 @@ from datasets import load_dataset
 from src.criteria_generator import CriteriaGenerator
 
 
-def load_samples(dataset_name: str, num_samples: int) -> tuple[list[str], list[str]]:
-    dataset = load_dataset(dataset_name, split="train")
+def load_samples(dataset_name: str, num_samples: int, split: str = "test") -> tuple[list[str], list[str]]:
+    dataset = load_dataset(dataset_name, split=split)
     text_col = next((c for c in ["text", "sentence", "utterance"] if c in dataset.column_names), dataset.column_names[0])
     label_col = next((c for c in ["label", "labels", "intent"] if c in dataset.column_names), dataset.column_names[-1])
     texts = dataset[text_col][:num_samples]
