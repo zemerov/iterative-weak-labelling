@@ -38,7 +38,7 @@ class LLMQueryClient:
                 "json_schema": {
                     "name": "response",
                     "schema": schema,
-                    "strict": True,
+                    "strict": False,
                 },
             }
         else:

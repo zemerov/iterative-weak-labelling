@@ -7,13 +7,14 @@ from src.criteria_generator import CriteriaGenerator
 
 
 def load_samples(dataset_name: str, num_samples: int, split: str = "test") -> tuple[list[str], list[str]]:
-    logger.debug("Loading dataset %s", dataset_name)
+    logger.debug(f"Loading dataset {dataset_name}")
     dataset = load_dataset(dataset_name, split=split)
     text_col = next((c for c in ["text", "sentence", "utterance"] if c in dataset.column_names), dataset.column_names[0])
     label_col = next((c for c in ["label", "labels", "intent"] if c in dataset.column_names), dataset.column_names[-1])
     texts = dataset[text_col][:num_samples]
     raw_labels = dataset[label_col][:num_samples]
     label_feature = dataset.features.get(label_col)
+    
     if hasattr(label_feature, "int2str"):
         labels = [label_feature.int2str(v) for v in raw_labels]
     else:
@@ -21,52 +22,47 @@ def load_samples(dataset_name: str, num_samples: int, split: str = "test") -> tu
     return texts, labels
 
 
-def read_criteria(path: str) -> dict[str, str]:
-    logger.debug("Reading existing criteria from %s", path)
-    criteria = {}
+def read_criteria(path: str) -> list[dict[str, str]]:
+    logger.debug(f"Reading existing criteria from {path}")
+    criteria = []
     with open(path, "r", encoding="utf-8") as f:
         for line in f:
-            item = json.loads(line)
-            criteria[item["criterion"]] = item["description"]
+            criteria.append(json.loads(line))
     return criteria
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset", required=True)
-    parser.add_argument("--output", required=True)
-    parser.add_argument("--existing", default=None)
-    parser.add_argument("--samples", type=int, default=50)
+def generate_criteria(dataset, output, existing=None, samples=100) -> None:
     args = parser.parse_args()
     logger.info(
-        "Generating criteria for dataset '{}' using {} samples", args.dataset, args.samples
+        f"Generating criteria for dataset '{ args.dataset}' using {args.samples} samples"
     )
 
     texts, labels = load_samples(args.dataset, args.samples)
-    logger.debug("Loaded {} texts", len(texts))
+    logger.debug(f"Loaded {len(texts)} texts")
 
     existing = read_criteria(args.existing) if args.existing else {}
     if existing:
-        logger.info("Loaded {} existing criteria from {}", len(existing), args.existing)
+        logger.info(f"Loaded {len(existing)} existing criteria from {args.existing}")
 
     generator = CriteriaGenerator(
-        "prompts/lf_generation.txt", "prompts/lf_deduplication.txt"
+        "prompts/lf_generation.txt", 
+        "prompts/lf_deduplication.txt"
     )
-    new_criteria_raw = generator.get_new_criteria(
+
+    new_criteria = generator.get_new_criteria(
         args.dataset, texts, labels, existing_criteria=existing if existing else None
     )
-    new_criteria = new_criteria_raw if isinstance(new_criteria_raw, list) else new_criteria_raw.get("criteria", [])
-    logger.info("Generated %d new criteria", len(new_criteria))
-    mapping_new = {c["criterion"]: c for c in new_criteria}
+
+    logger.info(f"Generated {len(new_criteria)} new criteria")
 
     if existing:
-        deduped = generator.deduplicate_new_criteria(existing, {k: v["description"] for k, v in mapping_new.items()})
-        logger.info("After deduplication %d criteria remain", len(deduped))
-        final = [mapping_new[k] for k in deduped]
+        mapping_new = {c["criterion"]: c for c in new_criteria}
+        final = generator.deduplicate_new_criteria(existing, new_criteria)
+        logger.info(f"After deduplication {len(final)} criteria remain", )
     else:
         final = new_criteria
 
-    logger.info("Writing %d criteria to %s", len(final), args.output)
+    logger.info(f"Writing {len(final)} criteria to {args.output}")
 
     with open(args.output, "w", encoding="utf-8") as f:
         for item in final:
@@ -75,4 +71,16 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--dataset", required=True)
+    parser.add_argument("--output", required=True)
+    parser.add_argument("--existing", default=None)
+    parser.add_argument("--samples", type=int, default=50)
+    args = parser.parse_args()
+
+    generate_criteria(
+        dataset=args.dataset,
+        output=args.output,
+        existing=args.exisiting,
+        samples=args.samples
+    )

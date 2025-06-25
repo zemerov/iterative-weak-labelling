@@ -21,8 +21,17 @@ class CriteriaGenerator:
     def _deduplication_schema(self) -> dict:
         return {
             "type": "object",
-            "additionalProperties": {"type": "string"},
-        }
+            "properties": {
+                "unique_criteria": {
+                "type": "array",
+                "items": {
+                    "type": "string"
+                }
+                }
+            },
+            "required": ["unique_criteria"],
+            "additionalProperties": False
+            }
 
     def _generation_schema(self) -> dict:
         """JSON schema for the criteria generation response."""
@@ -39,10 +48,12 @@ class CriteriaGenerator:
                             "class": {"type": "string"},
                         },
                         "required": ["criterion", "description", "class"],
+                        "additionalProperties": False,
                     },
-                }
+                },
             },
             "required": ["criteria"],
+            "additionalProperties": False,
         }
 
     def _llm_json(self, prompt: str, schema: dict | None = None) -> dict | list:
@@ -51,7 +62,7 @@ class CriteriaGenerator:
         result = self.llm_client.generate(
             messages,
             model=self.model,
-            temperature=0,
+            temperature=0.7,
             schema=schema,
         )
         return json.loads(result) if isinstance(result, str) else result
@@ -78,21 +89,24 @@ class CriteriaGenerator:
         )
         schema = self._generation_schema()
         result = self._llm_json(prompt, schema=schema)
-        return result.get("criteria", result)
+        return result["criteria"]
 
     def deduplicate_new_criteria(
         self,
-        existing: dict[str, str],
-        new: dict[str, str],
-    ) -> dict[str, str]:
+        existing: list[dict[str, str]],
+        new: list[dict[str, str]],
+    ) -> list[dict[str, str]]:
+        all_criteria = existing + new
+
         prompt = self.deduplicate_criteria_template.render(
-            criteria=json.dumps(new, ensure_ascii=False, indent=2)
+            criteria=json.dumps(all_criteria, ensure_ascii=False, indent=2)
         )
+        
         schema = self._deduplication_schema()
-        deduped_new = self._llm_json(prompt, schema=schema)
-        union = {**existing, **deduped_new}
-        prompt = self.deduplicate_criteria_template.render(
-            criteria=json.dumps(union, ensure_ascii=False, indent=2)
-        )
-        deduped_union = self._llm_json(prompt, schema=schema)
-        return {k: v for k, v in deduped_union.items() if k not in existing}
+        deduped_criteria_names = self._llm_json(prompt, schema=schema)
+        print(deduped_criteria_names)
+        deduped_criteria_names = deduped_criteria_names['unique_criteria']
+        
+        return [
+            x for x in all_criteria if x['criterion'] in deduped_criteria_names
+        ]
