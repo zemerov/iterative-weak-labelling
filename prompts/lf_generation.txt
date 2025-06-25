@@ -33,9 +33,11 @@ The description should be clear for LLM and consist of several sentences and exp
 Respond in JSON format with the following structure:
 
 ```json
-[
-    {"criterion": str, "description": str, "class": str},
-    {"criterion": str, "description": str, "class": str},
-    ...
-]
+{
+    "criteria": [
+        {"criterion": str, "description": str, "class": str},
+        {"criterion": str, "description": str, "class": str},
+        ...
+    ]
+}
 ```
