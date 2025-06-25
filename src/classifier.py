@@ -64,7 +64,7 @@ class DialogueCriteriaClassifier:
                 messages,
                 model=self.model,
                 temperature=self.temperature,
-                extra_body={"guided_json": json_schema}
+                schema=json_schema,
             )
         except Exception as e:
             logger.error(f"Error sending LLM request: {repr(e)}")

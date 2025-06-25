@@ -1,3 +1,4 @@
+import json
 import os
 from loguru import logger
 import openai
@@ -28,17 +29,22 @@ class LLMQueryClient:
         messages: list[dict],
         model: str,
         temperature: float,
-        extra_body: dict = None,
-        max_tokens: int = 2048
+        schema: dict | None,
+        max_tokens: int = 2048,
     ) -> str:
+        response_format = (
+            {"type": "json_schema", "schema": schema, "strict": True}
+            if schema
+            else {"type": "json_object"}
+        )
         completion = self.vllm_client.chat.completions.create(
             model=model,
             messages=messages,
             temperature=temperature,
             max_tokens=max_tokens,
-            extra_body=extra_body
+            response_format=response_format,
         )
-        
+
         return completion.choices[0].message.content
     
     def _generate_openai(
@@ -46,18 +52,23 @@ class LLMQueryClient:
         messages: list[dict],
         model: str,
         temperature: float,
-        extra_body: dict | None = None,
+        schema: dict | None,
         max_tokens: int = 2048,
     ) -> str:
         if self.openai_client is None:
             raise RuntimeError("OPENAI_API_KEY is not configured")
 
+        response_format = (
+            {"type": "json_schema", "schema": schema, "strict": True}
+            if schema
+            else {"type": "json_object"}
+        )
         completion = self.openai_client.chat.completions.create(
             model=model,
             messages=messages,
             temperature=temperature,
             max_tokens=max_tokens,
-            extra_body=extra_body,
+            response_format=response_format,
         )
 
         return completion.choices[0].message.content
@@ -65,24 +76,30 @@ class LLMQueryClient:
     def generate(
         self,
         messages: list[dict],
-        extra_body: dict = None,
+        model: str,
+        temperature: float = 0.0,
+        schema: dict | None = None,
         max_tokens: int = 4096,
-        model: str = None,
-        temperature: float = None
     ) -> str:
         if "gpt" in model:
-            return self._generate_openai(
+            content = self._generate_openai(
                 messages,
                 model,
                 temperature,
-                extra_body=extra_body,
+                schema,
                 max_tokens=max_tokens,
             )
-        return self._generate_vllm(
-            messages,
-            model,
-            temperature,
-            extra_body=extra_body,
-            max_tokens=max_tokens,
-        )
+        else:
+            content = self._generate_vllm(
+                messages,
+                model,
+                temperature,
+                schema,
+                max_tokens=max_tokens,
+            )
+
+        try:
+            return json.loads(content)
+        except Exception:
+            return content
 
