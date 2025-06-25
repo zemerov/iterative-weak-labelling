@@ -60,11 +60,11 @@ class DialogueCriteriaClassifier:
         json_schema = self._build_json_schema()
         
         try:
-            result = self.llm_client.query(
+            result = self.llm_client.generate(
                 messages,
                 model=self.model,
                 temperature=self.temperature,
-                extra_body={"guided_json": json_schema}
+                schema=json_schema,
             )
         except Exception as e:
             logger.error(f"Error sending LLM request: {repr(e)}")
