@@ -8,7 +8,7 @@ from llm_client import LLMQueryClient
 class DialogueCriteriaClassifier:
     def __init__(
         self,
-        criteria_dict: dict,
+        criteria_dict: dict[str, str],
         prompt_file: str,
         model: str,
         temperature: float = 0.01,
