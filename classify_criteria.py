@@ -10,7 +10,7 @@ from tqdm import tqdm
 from src.classifier import DialogueCriteriaClassifier
 
 
-MODEL_NAME = "gpt-4.1-2025-04-14"
+MODEL_NAME = "gpt-4.1-nano-2025-04-14"
 PROMPT_FILE = "prompts/extract_topics_with_reasoning.txt"
 
 def load_samples(dataset_name: str, split: str) -> list[str]:
@@ -35,10 +35,14 @@ def save_result(handle, obj: dict) -> None:
     handle.write(json.dumps(obj, ensure_ascii=False) + "\n")
     handle.flush()
 
-def run_parallel_requests(texts: list[str], classifier: DialogueCriteriaClassifier, output_path: str, num_workers: int, start_idx: int = 0) -> None:
+def run_parallel_requests(
+        texts: list[str], classifier: DialogueCriteriaClassifier, output_path: str, num_workers: int, start_idx: int = 0
+        ) -> None:
     logger.info(f"Processing {len(texts)} samples with {num_workers} workers")
     with ThreadPoolExecutor(max_workers=num_workers) as executor, open(output_path, "a", encoding="utf-8") as out_file:
-        futures = {executor.submit(classifier.classify_text, text): (idx, text) for idx, text in enumerate(texts, start=start_idx)}
+        futures = {
+            executor.submit(classifier.classify_text, text): (idx, text) for idx, text in enumerate(texts, start=start_idx)
+            }
         for future in tqdm(as_completed(futures), total=len(futures)):
             idx, text = futures[future]
             try:
@@ -49,7 +53,7 @@ def run_parallel_requests(texts: list[str], classifier: DialogueCriteriaClassifi
             result = {"index": idx, "text": text, "labels": labels}
             save_result(out_file, result)
 
-def main() -> None:
+def classify_criteria() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", required=True)
     parser.add_argument("--split", default="test")
@@ -78,4 +82,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    classify_criteria()

@@ -17,7 +17,7 @@ class LLMQueryClient:
             )
             self.openai_client = None
         else:
-            self.openai_client = openai.Client(api_key=openai_api_key)
+            self.openai_client = openai.Client(api_key=openai_api_key, timeout=120, max_retries=3)
 
         self.vllm_client = openai.Client(
             base_url=os.getenv("VLLM_BASE_URL", self.VLLM_BASE_URL),

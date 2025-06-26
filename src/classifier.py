@@ -2,7 +2,7 @@ import json
 from jinja2 import Template
 from loguru import logger
 
-from llm_client import LLMQueryClient
+from .llm_client import LLMQueryClient
 
 
 class DialogueCriteriaClassifier:
@@ -46,7 +46,8 @@ class DialogueCriteriaClassifier:
         schema = {
             "type": "object",
             "properties": properties,
-            "required": ["thoughts"] + list(self.criteria_dict.keys())
+            "required": ["thoughts"] + list(self.criteria_dict.keys()),
+             "additionalProperties": False,
         }
         
         return schema
