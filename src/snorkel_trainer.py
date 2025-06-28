@@ -19,18 +19,24 @@ class ClassInfo:
 class SnorkelTrainer:
     """Train a Snorkel label model for an arbitrary number of classes."""
 
-    def __init__(self, lf_descriptions: dict[str, str], class_names: Iterable[str]):
+    def __init__(
+        self,
+        lf_descriptions: dict[str, str],
+        lf_classes: dict[str, str],
+        class_names: Iterable[str],
+    ):
         self.class_infos = [ClassInfo(name, idx) for idx, name in enumerate(class_names)]
         self.class_to_index = {ci.name: ci.index for ci in self.class_infos}
         self.abstain = -1
 
         self.lf_descriptions = lf_descriptions
+        self.lf_classes = lf_classes
         self.lfs = [self._create_labeling_function(field) for field in lf_descriptions.keys()]
         self.applier = PandasLFApplier(self.lfs)
         self.label_model = LabelModel(cardinality=len(self.class_infos), verbose=True)
 
     def _create_labeling_function(self, field: str):
-        class_name = self.lf_descriptions[field]
+        class_name = self.lf_classes[field]
         class_index = self.class_to_index.get(class_name, self.abstain)
 
         @labeling_function(name=field)
