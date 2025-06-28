@@ -13,15 +13,15 @@ from iterative_pipeline import load_dataset_df, compute_metrics
 def train_catboost(dataset: str, dev_split: str) -> tuple[CatBoostClassifier, dict, dict]:
     """Train CatBoost model on ``dev_split`` and evaluate on dev and test sets."""
     train_df = load_dataset_df(dataset, dev_split)
-    dev_df = load_dataset_df(dataset, "train")
+    dev_df = load_dataset_df(dataset, dev_split)
     test_df = load_dataset_df(dataset, "test")
 
     train_pool = Pool(train_df["text"], label=train_df["label"], text_features=[0])
     dev_pool = Pool(dev_df["text"], label=dev_df["label"], text_features=[0])
     test_pool = Pool(test_df["text"], label=test_df["label"], text_features=[0])
 
-    model = CatBoostClassifier(loss_function="MultiClass", iterations=200, verbose=False)
-    model.fit(train_pool, eval_set=dev_pool, verbose=False)
+    model = CatBoostClassifier(loss_function="MultiClass", iterations=500, verbose=True)
+    model.fit(train_pool, eval_set=dev_pool, verbose=True)
 
     dev_preds = model.predict(dev_pool)
     test_preds = model.predict(test_pool)
