@@ -22,7 +22,7 @@ from src.snorkel_trainer import SnorkelTrainer
 from generate_criteria import read_criteria
 from classify_criteria import run_parallel_requests
 
-MODEL_NAME = "gpt-4.1-nano-2025-04-14"
+MODEL_NAME = "gpt-4.1-mini-2025-04-14"
 PROMPT_FILE = "prompts/extract_topics_with_reasoning.txt"
 
 
@@ -91,7 +91,11 @@ def read_criteria_file(path: Path) -> tuple[dict[str, str], dict[str, str]]:
             obj = json.loads(line)
             criterion_name = obj["criterion"]
             descriptions[criterion_name] = obj["description"]
-            classes[criterion_name] = obj["class"]
+
+            try:
+                classes[criterion_name] = int(obj["class"])
+            except Exception as e:
+                classes[criterion_name] = obj["class"]
 
     return descriptions, classes
 
@@ -119,7 +123,7 @@ def compute_metrics(y_true, y_pred, average="macro"):
         "f1": f1_score(y_true, y_pred, average=average),
         "precision": precision_score(y_true, y_pred, average=average),
         "recall": recall_score(y_true, y_pred, average=average),
-        "ap": average_precision_score(y_true, y_pred, average=average),
+        #"ap": average_precision_score(y_true, y_pred, average=average),
     }
 
 
@@ -210,7 +214,7 @@ def run_iteration(args, iteration: int, error_texts: list[dict[str, str]] | None
         labels = [str(sample["label"]) for sample in error_texts]
     else:
         texts = dev_df["text"].tolist()
-        labels = dev_df["label"].astype(str).tolist()
+        labels = dev_df["label"].tolist()
 
     criteria_path = iter_dir / "criteria.jsonl"
     prev_path = (
@@ -345,6 +349,7 @@ def run_iteration(args, iteration: int, error_texts: list[dict[str, str]] | None
 
     # Evaluate the label model on the dev set
     preds = trainer.predict(dev_pred_df)
+    print(preds)
     metrics = compute_metrics(dev_pred_df["label"], preds)
     metrics_path = iter_dir / "metrics" / "metrics.json"
     with open(metrics_path, "w", encoding="utf-8") as f:

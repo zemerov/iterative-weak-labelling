@@ -25,15 +25,14 @@ class SnorkelTrainer:
         lf_classes: dict[str, str],
         class_names: Iterable[str],
     ):
-        self.class_infos = [ClassInfo(name, idx) for idx, name in enumerate(class_names)]
-        self.class_to_index = {ci.name: ci.index for ci in self.class_infos}
+        self.class_to_index = {name: idx for idx, name in enumerate(class_names)}
         self.abstain = -1
 
         self.lf_descriptions = lf_descriptions
         self.lf_classes = lf_classes
         self.lfs = [self._create_labeling_function(field) for field in lf_descriptions.keys()]
         self.applier = PandasLFApplier(self.lfs)
-        self.label_model = LabelModel(cardinality=len(self.class_infos), verbose=True)
+        self.label_model = LabelModel(cardinality=len(self.class_to_index), verbose=True)
 
     def _create_labeling_function(self, field: str):
         class_name = self.lf_classes[field]
@@ -49,7 +48,7 @@ class SnorkelTrainer:
     def fit(self, train_df: pd.DataFrame) -> None:
         logger.info(f"Training label model on {len(train_df)} samples")
         L_train = self.applier.apply(train_df)
-        self.label_model.fit(L_train, n_epochs=1000, log_freq=100, l2=2, lr=1e-3, optimizer="adam")
+        self.label_model.fit(L_train, n_epochs=5000, log_freq=100, l2=2, lr=1e-3, optimizer="adam")
 
     def predict(self, df: pd.DataFrame) -> np.ndarray:
         L = self.applier.apply(df)
