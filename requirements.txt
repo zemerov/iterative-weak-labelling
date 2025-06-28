@@ -3,3 +3,7 @@ tqdm
 openai
 loguru
 datasets
+snorkel
+scikit-learn
+pandas
+numpy

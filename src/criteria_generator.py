@@ -16,7 +16,7 @@ class CriteriaGenerator:
 
         self.llm_client = LLMQueryClient()
         self.model = model
-        logger.debug("CriteriaGenerator initialised with model {}", model)
+        logger.info(f"CriteriaGenerator initialised with model {model}")
 
     def _deduplication_schema(self) -> dict:
         return {
@@ -58,7 +58,7 @@ class CriteriaGenerator:
 
     def _llm_json(self, prompt: str, schema: dict | None = None) -> dict | list:
         messages = [{"role": "system", "content": prompt}]
-        logger.debug("Sending prompt to LLM:\n{}", prompt)
+        logger.debug(f"Sending prompt to LLM:\n{prompt}")
         result = self.llm_client.generate(
             messages,
             model=self.model,

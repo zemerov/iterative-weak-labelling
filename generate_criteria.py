@@ -6,19 +6,43 @@ from datasets import load_dataset
 from src.criteria_generator import CriteriaGenerator
 
 
-def load_samples(dataset_name: str, num_samples: int, split: str = "test") -> tuple[list[str], list[str]]:
+def load_samples(
+    dataset_name: str,
+    num_samples: int,
+    split: str = "test",
+    create_empty: bool = False,
+) -> tuple[list[str], list[str]]:
+    """Load ``num_samples`` examples from a dataset.
+
+    If ``create_empty`` is ``True`` an empty list of texts and labels is
+    returned.  This is convenient when an empty dataset should be passed to the
+    pipeline during the first iteration.
+    """
     logger.debug(f"Loading dataset {dataset_name}")
     dataset = load_dataset(dataset_name, split=split)
-    text_col = next((c for c in ["text", "sentence", "utterance"] if c in dataset.column_names), dataset.column_names[0])
-    label_col = next((c for c in ["label", "labels", "intent"] if c in dataset.column_names), dataset.column_names[-1])
+
+    text_col = next(
+        (c for c in ["text", "sentence", "utterance"] if c in dataset.column_names),
+        dataset.column_names[0],
+    )
+    label_col = next(
+        (c for c in ["label", "labels", "intent"] if c in dataset.column_names),
+        dataset.column_names[-1],
+    )
+
+    if create_empty:
+        logger.debug("Returning empty dataset")
+        return [], []
+
     texts = dataset[text_col][:num_samples]
     raw_labels = dataset[label_col][:num_samples]
     label_feature = dataset.features.get(label_col)
-    
+
     if hasattr(label_feature, "int2str"):
         labels = [label_feature.int2str(v) for v in raw_labels]
     else:
         labels = [str(v) for v in raw_labels]
+
     return texts, labels
 
 
@@ -31,40 +55,45 @@ def read_criteria(path: str) -> list[dict[str, str]]:
     return criteria
 
 
-def generate_criteria(dataset, output, existing=None, samples=100) -> None:
-    args = parser.parse_args()
+def generate_criteria(dataset: str, output: str, existing: str | None = None, samples: int = 100) -> None:
+    """Generate labeling criteria and save them to ``output``."""
+
     logger.info(
-        f"Generating criteria for dataset '{ args.dataset}' using {args.samples} samples"
+        f"Generating criteria for dataset '{dataset}' using {samples} samples"
     )
 
-    texts, labels = load_samples(args.dataset, args.samples)
+    texts, labels = load_samples(dataset, samples)
     logger.debug(f"Loaded {len(texts)} texts")
 
-    existing = read_criteria(args.existing) if args.existing else {}
-    if existing:
-        logger.info(f"Loaded {len(existing)} existing criteria from {args.existing}")
+    existing_list = read_criteria(existing) if existing else []
+    if existing_list:
+        logger.info(f"Loaded {len(existing_list)} existing criteria from {existing}")
 
     generator = CriteriaGenerator(
-        "prompts/lf_generation.txt", 
-        "prompts/lf_deduplication.txt"
+        "prompts/lf_generation.txt",
+        "prompts/lf_deduplication.txt",
     )
 
     new_criteria = generator.get_new_criteria(
-        args.dataset, texts, labels, existing_criteria=existing if existing else None
+        dataset,
+        texts,
+        labels,
+        existing_criteria={c["criterion"]: c["description"] for c in existing_list}
+        if existing_list
+        else None,
     )
 
     logger.info(f"Generated {len(new_criteria)} new criteria")
 
-    if existing:
-        mapping_new = {c["criterion"]: c for c in new_criteria}
-        final = generator.deduplicate_new_criteria(existing, new_criteria)
-        logger.info(f"After deduplication {len(final)} criteria remain", )
+    if existing_list:
+        final = generator.deduplicate_new_criteria(existing_list, new_criteria)
+        logger.info(f"After deduplication {len(final)} criteria remain")
     else:
         final = new_criteria
 
-    logger.info(f"Writing {len(final)} criteria to {args.output}")
+    logger.info(f"Writing {len(final)} criteria to {output}")
 
-    with open(args.output, "w", encoding="utf-8") as f:
+    with open(output, "w", encoding="utf-8") as f:
         for item in final:
             f.write(json.dumps(item, ensure_ascii=False) + "\n")
     logger.info("Done")
@@ -81,6 +110,6 @@ if __name__ == "__main__":
     generate_criteria(
         dataset=args.dataset,
         output=args.output,
-        existing=args.exisiting,
+        existing=args.existing,
         samples=args.samples
     )
