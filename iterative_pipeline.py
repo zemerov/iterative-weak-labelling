@@ -5,7 +5,7 @@ import os
 import sys
 
 import pandas as pd
-from datasets import load_dataset
+from tqdm.auto import tqdm
 from loguru import logger
 from snorkel.labeling import LFAnalysis
 from sklearn.metrics import (
@@ -166,7 +166,7 @@ def run_iteration(args, iteration: int, error_texts: list[dict[str, str]] | None
     existing_dict = (
         {c["criterion"]: c["description"] for c in existing} if existing else None
     )
-    for label, t_list in label_groups.items():
+    for label, t_list in tqdm(label_groups.items(), desc="Generating criteria"):
         new_criteria.extend(
             generator.get_new_criteria(
                 args.dataset,
@@ -176,6 +176,7 @@ def run_iteration(args, iteration: int, error_texts: list[dict[str, str]] | None
             )
         )
 
+    logger.info(f"Generated {len(new_criteria)} new criteria!")
     # AICODE-NOTE deduplicate all criteria after generation in the loop. Concatenate all generated criteria before deduplication
     if existing:
         final_criteria = generator.deduplicate_new_criteria(existing, new_criteria)
