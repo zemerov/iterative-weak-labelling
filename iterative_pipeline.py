@@ -22,7 +22,7 @@ from src.snorkel_trainer import SnorkelTrainer
 from generate_criteria import read_criteria
 from classify_criteria import run_parallel_requests
 
-MODEL_NAME = "gpt-4.1-nano-2025-04-14"
+MODEL_NAME = "gpt-4.1-mini-2025-04-14"
 PROMPT_FILE = "prompts/extract_topics_with_reasoning.txt"
 
 
@@ -80,13 +80,24 @@ def save_jsonl(df: pd.DataFrame, path: Path) -> None:
     logger.info(f"Saved {len(df)} rows to {path}")
 
 
-def read_criteria_file(path: Path) -> dict[str, str]:
-    criteria = {}
+def read_criteria_file(path: Path) -> tuple[dict[str, str], dict[str, str]]:
+    """Load criterion descriptions and their associated classes from ``path``."""
+
+    descriptions: dict[str, str] = {}
+    classes: dict[str, str] = {}
+
     with open(path, "r", encoding="utf-8") as f:
         for line in f:
             obj = json.loads(line)
-            criteria[obj["criterion"]] = obj["description"]
-    return criteria
+            criterion_name = obj["criterion"]
+            descriptions[criterion_name] = obj["description"]
+
+            try:
+                classes[criterion_name] = int(obj["class"])
+            except Exception as e:
+                classes[criterion_name] = obj["class"]
+
+    return descriptions, classes
 
 
 def filter_lfs(
@@ -112,7 +123,7 @@ def compute_metrics(y_true, y_pred, average="macro"):
         "f1": f1_score(y_true, y_pred, average=average),
         "precision": precision_score(y_true, y_pred, average=average),
         "recall": recall_score(y_true, y_pred, average=average),
-        "ap": average_precision_score(y_true, y_pred, average=average),
+        #"ap": average_precision_score(y_true, y_pred, average=average),
     }
 
 
@@ -203,7 +214,7 @@ def run_iteration(args, iteration: int, error_texts: list[dict[str, str]] | None
         labels = [str(sample["label"]) for sample in error_texts]
     else:
         texts = dev_df["text"].tolist()
-        labels = dev_df["label"].astype(str).tolist()
+        labels = dev_df["label"].tolist()
 
     criteria_path = iter_dir / "criteria.jsonl"
     prev_path = (
@@ -217,7 +228,7 @@ def run_iteration(args, iteration: int, error_texts: list[dict[str, str]] | None
     if criteria_path.exists():
         # Criteria already calculated in a previous run
         logger.info(f"Loading existing criteria from {criteria_path}")
-        criteria = read_criteria_file(criteria_path)
+        criteria_descriptions, criteria_classes = read_criteria_file(criteria_path)
     else:
         # AICODE-TODO create criteria in a loop. Group texts by label. Send texts with single label
         label_groups: dict[str, list[str]] = {}
@@ -246,9 +257,9 @@ def run_iteration(args, iteration: int, error_texts: list[dict[str, str]] | None
             for item in final_criteria:
                 f.write(json.dumps(item, ensure_ascii=False) + "\n")
 
-        criteria = read_criteria_file(criteria_path)
+        criteria_descriptions, criteria_classes = read_criteria_file(criteria_path)
     classes = sorted(dev_df["label"].unique().tolist())
-    trainer_full = SnorkelTrainer(criteria, classes)
+    trainer_full = SnorkelTrainer(criteria_descriptions, criteria_classes, classes)
 
     dev_output = iter_dir / "classified" / "dev.jsonl"
     # Use cached classification if available
@@ -258,7 +269,7 @@ def run_iteration(args, iteration: int, error_texts: list[dict[str, str]] | None
     else:
         dev_pred_df = classify_texts(
             dev_df["text"].tolist(),
-            criteria,
+            criteria_descriptions,
             dev_output,
             args.num_workers,
         )
@@ -271,12 +282,21 @@ def run_iteration(args, iteration: int, error_texts: list[dict[str, str]] | None
         args.accuracy_threshold,
         iter_dir / "metrics",
     )
-    filtered_criteria = {k: v for k, v in criteria.items() if k in good_lfs}
+    filtered_criteria_descriptions = {
+        k: v for k, v in criteria_descriptions.items() if k in good_lfs
+    }
+    filtered_criteria_classes = {
+        k: v for k, v in criteria_classes.items() if k in good_lfs
+    }
     with open(iter_dir / "filtered_lfs.json", "w", encoding="utf-8") as f:
-        json.dump(filtered_criteria, f, ensure_ascii=False, indent=2)
+        json.dump(filtered_criteria_descriptions, f, ensure_ascii=False, indent=2)
 
     # Initialize trainer with filtered labeling functions
-    trainer = SnorkelTrainer(filtered_criteria, classes)
+    trainer = SnorkelTrainer(
+        filtered_criteria_descriptions,
+        filtered_criteria_classes,
+        classes,
+    )
 
     # classify train and test with filtered criteria
     train_output = iter_dir / "classified" / "train.jsonl"
@@ -287,7 +307,7 @@ def run_iteration(args, iteration: int, error_texts: list[dict[str, str]] | None
     else:
         train_pred_df = classify_texts(
             train_df["text"].tolist(),
-            filtered_criteria,
+            filtered_criteria_descriptions,
             train_output,
             args.num_workers,
         )
@@ -297,7 +317,7 @@ def run_iteration(args, iteration: int, error_texts: list[dict[str, str]] | None
     else:
         test_pred_df = classify_texts(
             test_df["text"].tolist(),
-            filtered_criteria,
+            filtered_criteria_descriptions,
             test_output,
             args.num_workers,
         )
@@ -329,6 +349,7 @@ def run_iteration(args, iteration: int, error_texts: list[dict[str, str]] | None
 
     # Evaluate the label model on the dev set
     preds = trainer.predict(dev_pred_df)
+    print(preds)
     metrics = compute_metrics(dev_pred_df["label"], preds)
     metrics_path = iter_dir / "metrics" / "metrics.json"
     with open(metrics_path, "w", encoding="utf-8") as f:
