@@ -132,7 +132,7 @@ def classify_texts(texts: list[str], criteria: dict[str, str], output: Path, wor
     return load_classified(output)
 
 
-def run_iteration(args, iteration: int, error_texts: list[str] | None = None):
+def run_iteration(args, iteration: int, error_texts: list[dict[str, str]] | None = None):
     iter_dir = Path(args.output_dir) / args.dataset / f"iter_{iteration}"
     ensure_dir(iter_dir / "weak_labels")
     ensure_dir(iter_dir / "models")
@@ -146,9 +146,9 @@ def run_iteration(args, iteration: int, error_texts: list[str] | None = None):
     generator = CriteriaGenerator("prompts/lf_generation.txt", "prompts/lf_deduplication.txt")
 
     if error_texts:
-        # AICODE-TODO init labels with real labels, change the error_text param to get not only texts but labels too
-        texts = error_texts
-        labels = ["unknown"] * len(error_texts)
+        # AICODE-NOTE init labels with real labels, change the error_text param to get not only texts but labels too
+        texts = [sample["text"] for sample in error_texts]
+        labels = [str(sample["label"]) for sample in error_texts]
     else:
         texts = dev_df["text"].tolist()
         labels = dev_df["label"].astype(str).tolist()
@@ -158,18 +158,29 @@ def run_iteration(args, iteration: int, error_texts: list[str] | None = None):
     existing = read_criteria(prev_path) if prev_path and prev_path.exists() else []
 
     # AICODE-TODO create criteria in a loop. Group texts by label. Send texts with single label
-    new_criteria = generator.get_new_criteria(
-        args.dataset,
-        texts,
-        labels,
-        existing_criteria={c["criterion"]: c["description"] for c in existing} if existing else None,
-    )
+    label_groups: dict[str, list[str]] = {}
+    for t, l in zip(texts, labels):
+        label_groups.setdefault(l, []).append(t)
 
-    # AICODE-TODO deduplicate all criteria after generation in the loop. Concatenate the all generated criteria before deduplication
+    new_criteria: list[dict[str, str]] = []
+    existing_dict = (
+        {c["criterion"]: c["description"] for c in existing} if existing else None
+    )
+    for label, t_list in label_groups.items():
+        new_criteria.extend(
+            generator.get_new_criteria(
+                args.dataset,
+                t_list,
+                [label] * len(t_list),
+                existing_criteria=existing_dict,
+            )
+        )
+
+    # AICODE-NOTE deduplicate all criteria after generation in the loop. Concatenate all generated criteria before deduplication
     if existing:
         final_criteria = generator.deduplicate_new_criteria(existing, new_criteria)
     else:
-        final_criteria = new_criteria
+        final_criteria = generator.deduplicate_new_criteria([], new_criteria)
     logger.info(f"Writing {len(final_criteria)} criteria to {criteria_path}")
     with open(criteria_path, "w", encoding="utf-8") as f:
         for item in final_criteria:
@@ -218,7 +229,11 @@ def run_iteration(args, iteration: int, error_texts: list[str] | None = None):
         json.dump(metrics, f, ensure_ascii=False, indent=2)
     logger.info(f"Saved metrics to {metrics_path}")
 
-    wrong = dev_df[preds != dev_pred_df["label"]]["text"].tolist()
+    wrong_df = dev_df[preds != dev_pred_df["label"]][["text", "label"]]
+    wrong = [
+        {"text": t, "label": str(l)}
+        for t, l in zip(wrong_df["text"], wrong_df["label"])
+    ]
     return wrong
 
 
