@@ -7,3 +7,4 @@ snorkel
 scikit-learn
 pandas
 numpy
+catboost
