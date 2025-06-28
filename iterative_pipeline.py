@@ -28,6 +28,31 @@ def ensure_dir(path: Path) -> None:
 
 
 def load_dataset_df(dataset_name: str, split: str) -> pd.DataFrame:
+    # AICODE-TODO load train/test/valid split from data/<dataset_name>/source/<train/valid/test>.json path
+    # The json schema for json files for laoding ading is the following:
+    # {
+    #   "type": "object",
+    #   "patternProperties": {
+    #     "^[0-9]+$": {
+    #       "type": "object",
+    #       "properties": {
+    #         "label": { "type": "integer" },
+    #         "data": {
+    #           "type": "object",
+    #           "properties": {
+    #             "text": { "type": "string" }
+    #           }
+    #         },
+    #         "weak_labels": {
+    #           "type": "array",
+    #           "items": { "type": "integer" }
+    #         }
+    #       }
+    #     }
+    #   }
+    # }
+    # Example for file structure can be found in data/banking/source/example_set.json
+
     ds = load_dataset(dataset_name, split=split)
     text_col = next((c for c in ["text", "sentence", "utterance"] if c in ds.column_names), ds.column_names[0])
     label_col = next((c for c in ["label", "labels", "intent"] if c in ds.column_names), ds.column_names[-1])
@@ -52,6 +77,7 @@ def read_criteria_file(path: Path) -> dict[str, str]:
 
 
 def filter_lfs(pred_df: pd.DataFrame, trainer: SnorkelTrainer, threshold: float) -> list[str]:
+    # AICODE-TODO save the scores table in folder that corresponds the iteration
     L = trainer.applier.apply(pred_df)
     scores = LFAnalysis(L, trainer.lfs).lf_summary(pred_df["label"].values)
     good_lfs = scores[scores["Emp. Acc."] > threshold].index.tolist()
@@ -108,6 +134,7 @@ def run_iteration(args, iteration: int, error_texts: list[str] | None = None):
     generator = CriteriaGenerator("prompts/lf_generation.txt", "prompts/lf_deduplication.txt")
 
     if error_texts:
+        # AICODE-TODO init labels with real labels, change the error_text param to get not only texts but labels too
         texts = error_texts
         labels = ["unknown"] * len(error_texts)
     else:
@@ -117,12 +144,16 @@ def run_iteration(args, iteration: int, error_texts: list[str] | None = None):
     criteria_path = iter_dir / "criteria.jsonl"
     prev_path = (Path(args.output_dir) / args.dataset / f"iter_{iteration-1}" / "criteria.jsonl") if iteration > 0 else None
     existing = read_criteria(prev_path) if prev_path and prev_path.exists() else []
+
+    # AICODE-TODO create criteria in a loop. Group texts by label. Send texts with single label
     new_criteria = generator.get_new_criteria(
         args.dataset,
         texts,
         labels,
         existing_criteria={c["criterion"]: c["description"] for c in existing} if existing else None,
     )
+
+    # AICODE-TODO deduplicate all criteria after generation in the loop. Concatenate the all generated criteria before deduplication
     if existing:
         final_criteria = generator.deduplicate_new_criteria(existing, new_criteria)
     else:
