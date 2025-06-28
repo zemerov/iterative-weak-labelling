@@ -1,11 +1,13 @@
 import argparse
 import json
 from pathlib import Path
+import os
+import sys
 
 import pandas as pd
 from datasets import load_dataset
 from loguru import logger
-from snorkel.analysis import LFAnalysis
+from snorkel.labeling import LFAnalysis
 from sklearn.metrics import (
     f1_score,
     precision_score,
@@ -27,37 +29,47 @@ def ensure_dir(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
 
 
-def load_dataset_df(dataset_name: str, split: str) -> pd.DataFrame:
-    # AICODE-TODO load train/test/valid split from data/<dataset_name>/source/<train/valid/test>.json path
-    # The json schema for json files for laoding ading is the following:
-    # {
-    #   "type": "object",
-    #   "patternProperties": {
-    #     "^[0-9]+$": {
-    #       "type": "object",
-    #       "properties": {
-    #         "label": { "type": "integer" },
-    #         "data": {
-    #           "type": "object",
-    #           "properties": {
-    #             "text": { "type": "string" }
-    #           }
-    #         },
-    #         "weak_labels": {
-    #           "type": "array",
-    #           "items": { "type": "integer" }
-    #         }
-    #       }
-    #     }
-    #   }
-    # }
-    # Example for file structure can be found in data/banking/source/example_set.json
 
-    ds = load_dataset(dataset_name, split=split)
-    text_col = next((c for c in ["text", "sentence", "utterance"] if c in ds.column_names), ds.column_names[0])
-    label_col = next((c for c in ["label", "labels", "intent"] if c in ds.column_names), ds.column_names[-1])
-    df = ds.to_pandas()
-    df = df.rename(columns={text_col: "text", label_col: "label"})
+def load_dataset_df(dataset_name: str, split: str, base_dir: str = "data") -> pd.DataFrame:
+    """
+    Load a single split (train/valid/test) for a local dataset stored as JSON.
+
+    Expects files at:
+        data/<dataset_name>/source/<split>.json
+
+    JSON schema:
+        {
+          "<id>": {
+            "label": int,
+            "data": {"text": str},
+            "weak_labels": [int, ...]
+          },
+          ...
+        }
+
+    Returns:
+        A DataFrame with columns ['text', 'label', 'weak_labels'].
+    """
+    # Build path to JSON file
+    json_path = os.path.join(base_dir, dataset_name, "source", f"{split}.json")
+
+    if not os.path.isfile(json_path):
+        raise FileNotFoundError(f"Split file not found: {json_path}")
+
+    # Load JSON content
+    with open(json_path, 'r', encoding='utf-8') as f:
+        raw = json.load(f)
+
+    # Parse into list of records
+    records = []
+    for idx, entry in raw.items():
+        text = entry.get("data", {}).get("text")
+        label = entry.get("label")
+        weak_labels = entry.get("weak_labels", None)
+        records.append({"text": text, "label": label, "weak_labels": weak_labels})
+
+    # Create DataFrame
+    df = pd.DataFrame(records)
     return df
 
 
@@ -226,4 +238,6 @@ def main():
 
 
 if __name__ == "__main__":
+    logger.remove() #remove the old handler. Else, the old one will work along with the new one you've added below'
+    logger.add(sys.stderr, level="INFO") 
     main()
