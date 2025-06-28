@@ -180,16 +180,22 @@ def run_parallel_generation(
 
 def run_iteration(args, iteration: int, error_texts: list[dict[str, str]] | None = None):
     iter_dir = Path(args.output_dir) / args.dataset / f"iter_{iteration}"
+    # Prepare directory structure for this iteration
     ensure_dir(iter_dir / "weak_labels")
     ensure_dir(iter_dir / "models")
     ensure_dir(iter_dir / "metrics")
     ensure_dir(iter_dir / "classified")
 
+    # Load dataset splits
     train_df = load_dataset_df(args.dataset, "train")
     test_df = load_dataset_df(args.dataset, "test")
     dev_df = load_dataset_df(args.dataset, args.dev_split)
 
-    generator = CriteriaGenerator("prompts/lf_generation.txt", "prompts/lf_deduplication.txt")
+    # Initialize criteria generator
+    generator = CriteriaGenerator(
+        "prompts/lf_generation.txt",
+        "prompts/lf_deduplication.txt",
+    )
 
     if error_texts:
         # AICODE-NOTE init labels with real labels, change the error_text param to get not only texts but labels too
@@ -200,44 +206,65 @@ def run_iteration(args, iteration: int, error_texts: list[dict[str, str]] | None
         labels = dev_df["label"].astype(str).tolist()
 
     criteria_path = iter_dir / "criteria.jsonl"
-    prev_path = (Path(args.output_dir) / args.dataset / f"iter_{iteration-1}" / "criteria.jsonl") if iteration > 0 else None
+    prev_path = (
+        Path(args.output_dir)
+        / args.dataset
+        / f"iter_{iteration-1}"
+        / "criteria.jsonl"
+    ) if iteration > 0 else None
     existing = read_criteria(prev_path) if prev_path and prev_path.exists() else []
 
-    # AICODE-TODO create criteria in a loop. Group texts by label. Send texts with single label
-    label_groups: dict[str, list[str]] = {}
-    for t, l in zip(texts, labels):
-        label_groups.setdefault(l, []).append(t)
-
-    existing_dict = (
-        {c["criterion"]: c["description"] for c in existing} if existing else None
-    )
-    new_criteria = run_parallel_generation(
-        generator,
-        args.dataset,
-        label_groups,
-        existing_dict,
-        args.num_workers,
-    )
-
-    logger.info(f"Generated {len(new_criteria)} new criteria!")
-    # AICODE-NOTE deduplicate all criteria after generation in the loop. Concatenate all generated criteria before deduplication
-    if existing:
-        final_criteria = generator.deduplicate_new_criteria(existing, new_criteria)
+    if criteria_path.exists():
+        # Criteria already calculated in a previous run
+        logger.info(f"Loading existing criteria from {criteria_path}")
+        criteria = read_criteria_file(criteria_path)
     else:
-        final_criteria = generator.deduplicate_new_criteria([], new_criteria)
-    logger.info(f"Writing {len(final_criteria)} criteria to {criteria_path}")
-    with open(criteria_path, "w", encoding="utf-8") as f:
-        for item in final_criteria:
-            f.write(json.dumps(item, ensure_ascii=False) + "\n")
+        # AICODE-TODO create criteria in a loop. Group texts by label. Send texts with single label
+        label_groups: dict[str, list[str]] = {}
+        for t, l in zip(texts, labels):
+            label_groups.setdefault(l, []).append(t)
 
-    criteria = read_criteria_file(criteria_path)
+        existing_dict = (
+            {c["criterion"]: c["description"] for c in existing} if existing else None
+        )
+        new_criteria = run_parallel_generation(
+            generator,
+            args.dataset,
+            label_groups,
+            existing_dict,
+            args.num_workers,
+        )
+
+        logger.info(f"Generated {len(new_criteria)} new criteria!")
+        # AICODE-NOTE deduplicate all criteria after generation in the loop. Concatenate all generated criteria before deduplication
+        if existing:
+            final_criteria = generator.deduplicate_new_criteria(existing, new_criteria)
+        else:
+            final_criteria = generator.deduplicate_new_criteria([], new_criteria)
+        logger.info(f"Writing {len(final_criteria)} criteria to {criteria_path}")
+        with open(criteria_path, "w", encoding="utf-8") as f:
+            for item in final_criteria:
+                f.write(json.dumps(item, ensure_ascii=False) + "\n")
+
+        criteria = read_criteria_file(criteria_path)
     classes = sorted(dev_df["label"].unique().tolist())
     trainer_full = SnorkelTrainer(criteria, classes)
 
     dev_output = iter_dir / "classified" / "dev.jsonl"
-    dev_pred_df = classify_texts(dev_df["text"].tolist(), criteria, dev_output, args.num_workers)
+    # Use cached classification if available
+    if dev_output.exists():
+        logger.info(f"Loading existing classification from {dev_output}")
+        dev_pred_df = load_classified(dev_output)
+    else:
+        dev_pred_df = classify_texts(
+            dev_df["text"].tolist(),
+            criteria,
+            dev_output,
+            args.num_workers,
+        )
     dev_pred_df["label"] = dev_df["label"].map(lambda x: trainer_full.class_to_index[x])
 
+    # Evaluate labeling functions on dev set and filter by accuracy
     good_lfs = filter_lfs(
         dev_pred_df,
         trainer_full,
@@ -248,29 +275,59 @@ def run_iteration(args, iteration: int, error_texts: list[dict[str, str]] | None
     with open(iter_dir / "filtered_lfs.json", "w", encoding="utf-8") as f:
         json.dump(filtered_criteria, f, ensure_ascii=False, indent=2)
 
+    # Initialize trainer with filtered labeling functions
     trainer = SnorkelTrainer(filtered_criteria, classes)
 
     # classify train and test with filtered criteria
     train_output = iter_dir / "classified" / "train.jsonl"
     test_output = iter_dir / "classified" / "test.jsonl"
-    train_pred_df = classify_texts(train_df["text"].tolist(), filtered_criteria, train_output, args.num_workers)
-    test_pred_df = classify_texts(test_df["text"].tolist(), filtered_criteria, test_output, args.num_workers)
+    if train_output.exists():
+        logger.info(f"Loading existing classification from {train_output}")
+        train_pred_df = load_classified(train_output)
+    else:
+        train_pred_df = classify_texts(
+            train_df["text"].tolist(),
+            filtered_criteria,
+            train_output,
+            args.num_workers,
+        )
+    if test_output.exists():
+        logger.info(f"Loading existing classification from {test_output}")
+        test_pred_df = load_classified(test_output)
+    else:
+        test_pred_df = classify_texts(
+            test_df["text"].tolist(),
+            filtered_criteria,
+            test_output,
+            args.num_workers,
+        )
 
-    # add labels as indices
+    # Attach numeric label indices used by Snorkel
     train_pred_df["label"] = train_df["label"].map(lambda x: trainer.class_to_index[x])
     test_pred_df["label"] = test_df["label"].map(lambda x: trainer.class_to_index[x])
 
+    # Generate weak label matrices for all splits
     for name, df in {"train": train_pred_df, "test": test_pred_df, "dev": dev_pred_df}.items():
         L = trainer.applier.apply(df)
         wl_path = iter_dir / "weak_labels" / f"{name}.jsonl"
-        pd.DataFrame(L, columns=[lf.name for lf in trainer.lfs]).to_json(wl_path, orient="records", lines=True)
+        pd.DataFrame(L, columns=[lf.name for lf in trainer.lfs]).to_json(
+            wl_path,
+            orient="records",
+            lines=True,
+        )
         logger.info(f"Saved weak labels for {name} to {wl_path}")
 
-    trainer.fit(train_pred_df)
     model_path = iter_dir / "models" / "label_model.pkl"
-    trainer.label_model.save(model_path)
-    logger.info(f"Saved label model to {model_path}")
+    if model_path.exists():
+        # Load previously trained model
+        logger.info(f"Loading label model from {model_path}")
+        trainer.label_model.load(str(model_path))
+    else:
+        trainer.fit(train_pred_df)
+        trainer.label_model.save(model_path)
+        logger.info(f"Saved label model to {model_path}")
 
+    # Evaluate the label model on the dev set
     preds = trainer.predict(dev_pred_df)
     metrics = compute_metrics(dev_pred_df["label"], preds)
     metrics_path = iter_dir / "metrics" / "metrics.json"
@@ -278,6 +335,7 @@ def run_iteration(args, iteration: int, error_texts: list[dict[str, str]] | None
         json.dump(metrics, f, ensure_ascii=False, indent=2)
     logger.info(f"Saved metrics to {metrics_path}")
 
+    # Gather texts the model got wrong for next iteration
     wrong_df = dev_df[preds != dev_pred_df["label"]][["text", "label"]]
     wrong = [
         {"text": t, "label": str(l)}
