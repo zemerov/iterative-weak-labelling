@@ -38,7 +38,7 @@ def save_result(handle, obj: dict) -> None:
 def run_parallel_requests(
         texts: list[str], classifier: DialogueCriteriaClassifier, output_path: str, num_workers: int, start_idx: int = 0
         ) -> None:
-    logger.info(f"Processing {len(texts)} samples with {num_workers} workers")
+    logger.info(f"Classfying {len(texts)} samples with {num_workers} workers...")
     with ThreadPoolExecutor(max_workers=num_workers) as executor, open(output_path, "a", encoding="utf-8") as out_file:
         futures = {
             executor.submit(classifier.classify_text, text): (idx, text) for idx, text in enumerate(texts, start=start_idx)
