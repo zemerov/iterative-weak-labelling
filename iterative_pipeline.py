@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 import os
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import pandas as pd
 from tqdm.auto import tqdm
@@ -88,10 +89,19 @@ def read_criteria_file(path: Path) -> dict[str, str]:
     return criteria
 
 
-def filter_lfs(pred_df: pd.DataFrame, trainer: SnorkelTrainer, threshold: float) -> list[str]:
-    # AICODE-TODO save the scores table in folder that corresponds the iteration
+def filter_lfs(
+    pred_df: pd.DataFrame,
+    trainer: SnorkelTrainer,
+    threshold: float,
+    metrics_dir: Path,
+) -> list[str]:
+    """Filter labeling functions by empirical accuracy and save score table."""
     L = trainer.applier.apply(pred_df)
     scores = LFAnalysis(L, trainer.lfs).lf_summary(pred_df["label"].values)
+    metrics_dir.mkdir(parents=True, exist_ok=True)
+    scores_path = metrics_dir / "lf_scores.csv"
+    scores.to_csv(scores_path)
+    logger.info(f"Saved LF scores to {scores_path}")
     good_lfs = scores[scores["Emp. Acc."] > threshold].index.tolist()
     logger.info(f"Filtered to {len(good_lfs)} labeling functions")
     return good_lfs
@@ -132,6 +142,42 @@ def classify_texts(texts: list[str], criteria: dict[str, str], output: Path, wor
     return load_classified(output)
 
 
+def run_parallel_generation(
+    generator: CriteriaGenerator,
+    dataset: str,
+    label_groups: dict[str, list[str]],
+    existing: dict[str, str] | None,
+    num_workers: int,
+) -> list[dict[str, str]]:
+    """Generate criteria for label groups concurrently."""
+    logger.info(
+        f"Generating criteria for {len(label_groups)} groups with {num_workers} workers..."
+    )
+    results: list[dict[str, str]] = []
+    with ThreadPoolExecutor(max_workers=num_workers) as executor:
+        futures = {
+            executor.submit(
+                generator.get_new_criteria,
+                dataset,
+                texts,
+                [label] * len(texts),
+                existing_criteria=existing,
+            ): label
+            for label, texts in label_groups.items()
+        }
+        for future in tqdm(as_completed(futures), total=len(futures)):
+            label = futures[future]
+            try:
+                res = future.result()
+            except Exception as e:  # pragma: no cover - logging only
+                logger.error(
+                    f"Error generating criteria for label {label}: {repr(e)}"
+                )
+                res = []
+            results.extend(res)
+    return results
+
+
 def run_iteration(args, iteration: int, error_texts: list[dict[str, str]] | None = None):
     iter_dir = Path(args.output_dir) / args.dataset / f"iter_{iteration}"
     ensure_dir(iter_dir / "weak_labels")
@@ -162,19 +208,16 @@ def run_iteration(args, iteration: int, error_texts: list[dict[str, str]] | None
     for t, l in zip(texts, labels):
         label_groups.setdefault(l, []).append(t)
 
-    new_criteria: list[dict[str, str]] = []
     existing_dict = (
         {c["criterion"]: c["description"] for c in existing} if existing else None
     )
-    for label, t_list in tqdm(label_groups.items(), desc="Generating criteria"):
-        new_criteria.extend(
-            generator.get_new_criteria(
-                args.dataset,
-                t_list,
-                [label] * len(t_list),
-                existing_criteria=existing_dict,
-            )
-        )
+    new_criteria = run_parallel_generation(
+        generator,
+        args.dataset,
+        label_groups,
+        existing_dict,
+        args.num_workers,
+    )
 
     logger.info(f"Generated {len(new_criteria)} new criteria!")
     # AICODE-NOTE deduplicate all criteria after generation in the loop. Concatenate all generated criteria before deduplication
@@ -195,7 +238,12 @@ def run_iteration(args, iteration: int, error_texts: list[dict[str, str]] | None
     dev_pred_df = classify_texts(dev_df["text"].tolist(), criteria, dev_output, args.num_workers)
     dev_pred_df["label"] = dev_df["label"].map(lambda x: trainer_full.class_to_index[x])
 
-    good_lfs = filter_lfs(dev_pred_df, trainer_full, args.accuracy_threshold)
+    good_lfs = filter_lfs(
+        dev_pred_df,
+        trainer_full,
+        args.accuracy_threshold,
+        iter_dir / "metrics",
+    )
     filtered_criteria = {k: v for k, v in criteria.items() if k in good_lfs}
     with open(iter_dir / "filtered_lfs.json", "w", encoding="utf-8") as f:
         json.dump(filtered_criteria, f, ensure_ascii=False, indent=2)
