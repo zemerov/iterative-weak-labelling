@@ -6,7 +6,8 @@ from typing import Iterable
 import numpy as np
 import pandas as pd
 from loguru import logger
-from snorkel.labeling import PandasLFApplier, LabelModel, labeling_function
+from snorkel.labeling import PandasLFApplier, labeling_function
+from snorkel.labeling.model.label_model import LabelModel
 
 
 @dataclass
