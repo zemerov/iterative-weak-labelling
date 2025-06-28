@@ -37,29 +37,35 @@ class DialogueCriteriaClassifier:
         return self.template.render(existing_small_tags=descriptions)
 
     def _build_json_schema(self) -> dict:
+        """Construct JSON schema for the LLM response."""
         properties = {
-            "thoughts": {"type": "string"}
-            } | {
-            criterion: {"type": "boolean"} for criterion in self.criteria_dict
-            }
-        
+            "thoughts": {"type": "string"},
+            "found_criteria": {
+                "type": "array",
+                "items": {
+                    "type": "string",
+                    "enum": list(self.criteria_dict.keys()),
+                },
+            },
+        }
+
         schema = {
             "type": "object",
             "properties": properties,
-            "required": ["thoughts"] + list(self.criteria_dict.keys()),
-             "additionalProperties": False,
+            "required": ["thoughts", "found_criteria"],
+            "additionalProperties": False,
         }
-        
+
         return schema
 
     def classify_text(self, dialogue: str) -> dict:
         system_message = self._construct_few_shot_prompt()
         messages = [
-            {"role": "system", "content": system_message}, 
+            {"role": "system", "content": system_message},
             {"role": "user", "content": dialogue}
         ]
         json_schema = self._build_json_schema()
-        
+
         try:
             result = self.llm_client.generate(
                 messages,
@@ -70,11 +76,15 @@ class DialogueCriteriaClassifier:
         except Exception as e:
             logger.error(f"Error sending LLM request: {repr(e)}")
             return {label: None for label in self.criteria_dict}
-        
+
         try:
             parsed_result = json.loads(result) if isinstance(result, str) else result
-            labels = {label: parsed_result.get(label, None) for label in self.criteria_dict}
+            found = set(parsed_result.get("found_criteria", []))
+            # AICODE-NOTE convert list of found criteria to mapping {label: bool}
+            labels = {label: label in found for label in self.criteria_dict}
         except Exception as e:
-            logger.error(f"Error parsing LLM response: {repr(e)}. Response: {result}")
+            logger.error(
+                f"Error parsing LLM response: {repr(e)}. Response: {result}"
+            )
             labels = {label: None for label in self.criteria_dict}
         return labels
